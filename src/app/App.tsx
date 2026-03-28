@@ -1,130 +1,164 @@
-import { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Loader2, Send } from 'lucide-react';
 import { motion } from 'motion/react';
 import './App.css';
 
-interface ChatMessage {
+interface Message {
   id: string;
-  prompt: string;
-  response: string;
+  role: 'user' | 'assistant';
+  content: string;
   timestamp: number;
 }
 
+interface PastThread {
+  id: string;
+  firstMessage: string;
+  timestamp: number;
+}
+
+const SYSTEM_PROMPT = 'You are a helpful travel assistant. Provide informative, friendly, and practical travel advice.';
+
 export default function App() {
   const [prompt, setPrompt] = useState('');
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
-  const [currentResponse, setCurrentResponse] = useState('');
+  const [threadInput, setThreadInput] = useState('');
+  const [currentThread, setCurrentThread] = useState<Message[]>([]);
+  const [pastThreads, setPastThreads] = useState<PastThread[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY as string;
+  const threadEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const savedHistory = localStorage.getItem('spotnana-chat-history');
-    if (savedHistory) {
-      try {
-        setChatHistory(JSON.parse(savedHistory));
-      } catch (e) {
-        console.error('Error loading chat history:', e);
-      }
+    const savedThread = localStorage.getItem('spotnana-current-thread');
+    const savedPast = localStorage.getItem('spotnana-past-threads');
+    if (savedThread) {
+      try { setCurrentThread(JSON.parse(savedThread)); } catch {}
+    }
+    if (savedPast) {
+      try { setPastThreads(JSON.parse(savedPast)); } catch {}
     }
   }, []);
 
   useEffect(() => {
-    if (chatHistory.length > 0) {
-      localStorage.setItem('spotnana-chat-history', JSON.stringify(chatHistory));
-    }
-  }, [chatHistory]);
+    localStorage.setItem('spotnana-current-thread', JSON.stringify(currentThread));
+  }, [currentThread]);
 
+  useEffect(() => {
+    localStorage.setItem('spotnana-past-threads', JSON.stringify(pastThreads));
+  }, [pastThreads]);
+
+  // Auto-scroll to latest message
+  useEffect(() => {
+    threadEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [currentThread, isLoading]);
+
+  const callOpenAI = async (messages: { role: string; content: string }[]) => {
+    const response = await fetch('/api/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-3.5-turbo',
+        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
+        temperature: 0.7,
+        max_tokens: 500,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error?.message || 'Failed to get response from AI');
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content as string;
+  };
+
+  // Start a new conversation from the left-side input
   const handleSubmit = async () => {
-    if (!prompt.trim()) {
-      setError('Please enter a prompt');
-      return;
+    if (!prompt.trim()) { setError('Please enter a prompt'); return; }
+    if (!apiKey) { setError('OpenAI API key not found. Add VITE_OPENAI_API_KEY to your .env file.'); return; }
+
+    // Archive current thread if it has content
+    if (currentThread.length > 0) {
+      const firstUser = currentThread.find(m => m.role === 'user');
+      if (firstUser) {
+        setPastThreads(prev => [{
+          id: Date.now().toString(),
+          firstMessage: firstUser.content,
+          timestamp: firstUser.timestamp,
+        }, ...prev]);
+      }
     }
 
-    if (!apiKey) {
-      setError('OpenAI API key not found. Add VITE_OPENAI_API_KEY to your .env file.');
-      return;
-    }
-
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: prompt, timestamp: Date.now() };
+    setCurrentThread([userMsg]);
+    setPrompt('');
     setIsLoading(true);
     setError('');
-    setCurrentResponse('');
 
     try {
-      const response = await fetch('/api/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a helpful travel assistant. Provide informative, friendly, and practical travel advice.',
-            },
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-          temperature: 0.7,
-          max_tokens: 500,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || 'Failed to get response from AI');
-      }
-
-      const data = await response.json();
-      const aiResponse = data.choices[0].message.content;
-
-      const newMessage: ChatMessage = {
-        id: Date.now().toString(),
-        prompt,
-        response: aiResponse,
-        timestamp: Date.now(),
-      };
-
-      setChatHistory(prev => [newMessage, ...prev]);
-      setCurrentResponse(aiResponse);
-      setPrompt('');
+      const aiContent = await callOpenAI([{ role: 'user', content: userMsg.content }]);
+      const aiMsg: Message = { id: (Date.now() + 1).toString(), role: 'assistant', content: aiContent, timestamp: Date.now() };
+      setCurrentThread([userMsg, aiMsg]);
     } catch (err) {
-      console.error('Fetch error:', err);
+      console.error(err);
+      setError(err instanceof Error ? err.message : 'An error occurred. Please try again.');
+      setCurrentThread([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Continue the conversation from the right-side input
+  const handleThreadSubmit = async () => {
+    if (!threadInput.trim() || isLoading) return;
+    if (!apiKey) { setError('OpenAI API key not found.'); return; }
+
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: threadInput, timestamp: Date.now() };
+    const updatedThread = [...currentThread, userMsg];
+    setCurrentThread(updatedThread);
+    setThreadInput('');
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const aiContent = await callOpenAI(updatedThread.map(m => ({ role: m.role, content: m.content })));
+      const aiMsg: Message = { id: (Date.now() + 1).toString(), role: 'assistant', content: aiContent, timestamp: Date.now() };
+      setCurrentThread([...updatedThread, aiMsg]);
+    } catch (err) {
+      console.error(err);
       setError(err instanceof Error ? err.message : 'An error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleClear = () => {
-    setPrompt('');
-    setCurrentResponse('');
-    setError('');
-  };
+  const handleClear = () => { setPrompt(''); setError(''); };
 
   const handleClearHistory = () => {
-    setChatHistory([]);
-    localStorage.removeItem('spotnana-chat-history');
-    setCurrentResponse('');
+    setPastThreads([]);
+    setCurrentThread([]);
+    localStorage.removeItem('spotnana-past-threads');
+    localStorage.removeItem('spotnana-current-thread');
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
+  };
+
+  const handleThreadKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleThreadSubmit(); }
   };
 
   return (
     <div className="app-container">
       <div className="main-content">
 
-        {/* Left Section — sticky input + history */}
+        {/* Left Section */}
         <div className="left-section">
           <motion.h1
             initial={{ opacity: 0 }}
@@ -176,42 +210,25 @@ export default function App() {
             <button onClick={handleClear} disabled={isLoading || !prompt.trim()} className="button button-clear">
               Clear
             </button>
-            <button
-              onClick={handleSubmit}
-              disabled={isLoading || !prompt.trim()}
-              className="button button-submit"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="spinner" />
-                  <span>Loading...</span>
-                </>
-              ) : (
-                'Submit'
-              )}
+            <button onClick={handleSubmit} disabled={isLoading || !prompt.trim()} className="button button-submit">
+              {isLoading && currentThread.length === 0 ? (
+                <><Loader2 className="spinner" /><span>Loading...</span></>
+              ) : 'Submit'}
             </button>
           </motion.div>
 
-          {/* Past conversations — small, understated */}
-          {chatHistory.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.5 }}
-              className="left-history"
-            >
+          {/* Past threads */}
+          {pastThreads.length > 0 && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }} className="left-history">
               <div className="left-history-header">
                 <span className="left-history-title">Past</span>
-                <button className="left-history-clear" onClick={handleClearHistory}>
-                  Clear
-                </button>
+                <button className="left-history-clear" onClick={handleClearHistory}>Clear</button>
               </div>
-
-              {chatHistory.map((msg) => (
-                <div key={msg.id} className="left-history-item">
-                  <p className="left-history-prompt">{msg.prompt}</p>
+              {pastThreads.map((thread) => (
+                <div key={thread.id} className="left-history-item">
+                  <p className="left-history-prompt">{thread.firstMessage}</p>
                   <p className="left-history-time">
-                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(thread.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
               ))}
@@ -227,34 +244,72 @@ export default function App() {
         {/* Divider */}
         <div className="divider" />
 
-        {/* Right Section — scrollable response */}
+        {/* Right Section — conversation thread */}
         <div className="right-section">
-          {!currentResponse && !isLoading ? (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 1, delay: 1 }}
-              className="empty-state"
-            >
-              <p>Your response will appear here</p>
-            </motion.div>
-          ) : (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              className="response-box"
-            >
-              <h2 className="box-title">AI Response</h2>
-              {isLoading ? (
-                <div className="loading-state">
-                  <Loader2 className="spinner-large" />
-                  <p>Thinking...</p>
-                </div>
-              ) : (
-                <p className="response-text">{currentResponse}</p>
-              )}
-            </motion.div>
+          <div className="thread-messages">
+            {currentThread.length === 0 && !isLoading ? (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 1, delay: 1 }}
+                className="empty-state"
+              >
+                <p>Your conversation will appear here</p>
+              </motion.div>
+            ) : (
+              <>
+                {currentThread.map((msg) => (
+                  <motion.div
+                    key={msg.id}
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.35 }}
+                    className={`thread-message thread-message-${msg.role}`}
+                  >
+                    <p className="thread-role">{msg.role === 'user' ? 'You' : 'Spotnana AI'}</p>
+                    <p className="thread-content">{msg.content}</p>
+                    <p className="thread-timestamp">
+                      {new Date(msg.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                      {' · '}
+                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </motion.div>
+                ))}
+
+                {isLoading && (
+                  <div className="thread-message thread-message-assistant">
+                    <p className="thread-role">Spotnana AI</p>
+                    <div className="loading-state">
+                      <Loader2 className="spinner-large" />
+                      <p>Thinking...</p>
+                    </div>
+                  </div>
+                )}
+
+                <div ref={threadEndRef} />
+              </>
+            )}
+          </div>
+
+          {/* Reply input — only shown when a thread is active */}
+          {(currentThread.length > 0 || isLoading) && (
+            <div className="thread-input-area">
+              <textarea
+                value={threadInput}
+                onChange={(e) => setThreadInput(e.target.value)}
+                onKeyDown={handleThreadKeyDown}
+                placeholder="Continue the conversation..."
+                className="thread-input"
+                disabled={isLoading}
+              />
+              <button
+                onClick={handleThreadSubmit}
+                disabled={isLoading || !threadInput.trim()}
+                className="thread-send"
+              >
+                <Send size={18} />
+              </button>
+            </div>
           )}
         </div>
 
