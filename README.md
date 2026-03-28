@@ -1,2 +1,2 @@
-# Spotana.AI
+# Spotnana.AI
 Travel Planning AI
