@@ -23,11 +23,11 @@
 
 /* Left Section — sticky, never scrolls away */
 .left-section {
-  width: 520px;
+  width: clamp(300px, 40%, 520px);
   flex-shrink: 0;
   height: 100vh;
   overflow-y: auto;
-  padding: 52px 48px 32px;
+  padding: clamp(24px, 4vw, 52px) clamp(20px, 4vw, 48px) 32px;
   display: flex;
   flex-direction: column;
 }
@@ -47,10 +47,11 @@
   flex: 1;
   height: 100vh;
   overflow-y: auto;
-  padding: 52px 48px 32px;
+  padding: clamp(24px, 4vw, 52px) clamp(20px, 4vw, 48px) 32px;
   display: flex;
   flex-direction: column;
   gap: 24px;
+  min-width: 0;
 }
 
 .right-section::-webkit-scrollbar {
@@ -70,21 +71,22 @@
 /* Title */
 .app-title {
   font-family: 'Cormorant Garamond', serif;
-  font-size: 56px;
+  font-size: clamp(28px, 3.8vw, 52px);
   color: white;
-  letter-spacing: 12.8px;
-  margin-bottom: 28px;
+  letter-spacing: clamp(3px, 0.8vw, 10px);
+  margin-bottom: clamp(16px, 2vw, 28px);
   font-weight: 400;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* Subtitle */
 .app-subtitle {
   font-family: 'Manrope', sans-serif;
-  font-size: 18px;
+  font-size: clamp(14px, 1.4vw, 18px);
   color: white;
-  line-height: 32px;
-  margin-bottom: 32px;
+  line-height: 1.8;
+  margin-bottom: clamp(20px, 2.5vw, 32px);
   flex-shrink: 0;
 }
 
@@ -445,3 +447,63 @@
 
 .modal-button-save { background-color: #d6fe81; color: #073277; }
 .modal-button-save:hover { background-color: #c5ed70; }
+
+/* Mobile — stack vertically */
+@media (max-width: 768px) {
+  .app-container {
+    height: auto;
+    overflow-y: auto;
+  }
+
+  .main-content {
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
+  }
+
+  .left-section {
+    width: 100%;
+    height: auto;
+    overflow-y: visible;
+    padding: 32px 24px 24px;
+  }
+
+  .divider {
+    width: 100%;
+    height: 1px;
+    align-self: auto;
+  }
+
+  .right-section {
+    width: 100%;
+    height: auto;
+    min-height: 50vh;
+    overflow-y: visible;
+    padding: 32px 24px;
+  }
+
+  .app-title {
+    font-size: clamp(28px, 8vw, 42px);
+    letter-spacing: clamp(3px, 2vw, 8px);
+    white-space: nowrap;
+  }
+
+  .app-subtitle {
+    font-size: 15px;
+  }
+
+  .prompt-input {
+    font-size: 16px;
+    height: 140px;
+  }
+
+  .button {
+    flex: 1;
+    width: auto;
+    font-size: 18px;
+  }
+
+  .empty-state {
+    min-height: 200px;
+  }
+}
