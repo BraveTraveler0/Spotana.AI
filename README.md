@@ -1,4 +1,4 @@
-# Spotana.AI
+# Spotnana.AI
 
 A travel AI assistant built with React + Vite. Ask anything about travel and get instant AI-powered responses. Built as part of the Spotnana Frontend Engineer Technical Assessment.
 
@@ -23,8 +23,8 @@ A travel AI assistant built with React + Vite. Ask anything about travel and get
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/your-username/spotana-ai.git
-cd spotana-ai
+git clone https://github.com/your-username/spotnana-ai.git
+cd spotnana-ai
 ```
 
 ### 2. Install dependencies

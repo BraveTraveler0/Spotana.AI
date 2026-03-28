@@ -20,7 +20,7 @@ export default function App() {
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY as string;
 
   useEffect(() => {
-    const savedHistory = localStorage.getItem('spotana-chat-history');
+    const savedHistory = localStorage.getItem('spotnana-chat-history');
     if (savedHistory) {
       try {
         setChatHistory(JSON.parse(savedHistory));
@@ -32,7 +32,7 @@ export default function App() {
 
   useEffect(() => {
     if (chatHistory.length > 0) {
-      localStorage.setItem('spotana-chat-history', JSON.stringify(chatHistory));
+      localStorage.setItem('spotnana-chat-history', JSON.stringify(chatHistory));
     }
   }, [chatHistory]);
 
@@ -109,7 +109,7 @@ export default function App() {
 
   const handleClearHistory = () => {
     setChatHistory([]);
-    localStorage.removeItem('spotana-chat-history');
+    localStorage.removeItem('spotnana-chat-history');
     setCurrentResponse('');
   };
 
@@ -132,7 +132,7 @@ export default function App() {
             transition={{ duration: 1.2, ease: 'easeOut' }}
             className="app-title"
           >
-            SPOTANA.AI
+            SPOTNANA.AI
           </motion.h1>
 
           <motion.div
@@ -219,7 +219,7 @@ export default function App() {
           )}
 
           <footer className="footer">
-            <p>© 2026 Spotana.AI · <span className="footer-link">Privacy Policy</span> · <span className="footer-link">Terms of Use</span></p>
+            <p>© 2026 Spotnana.AI · <span className="footer-link">Privacy Policy</span> · <span className="footer-link">Terms of Use</span></p>
             <p className="footer-sub">Built by Darrien Carter</p>
           </footer>
         </div>
